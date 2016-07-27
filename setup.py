@@ -7,9 +7,9 @@ import sys
 
 import setuptools
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))  # noqa
 
-import flake8  # noqa
+import flake8
 
 
 tests_require = ['mock', 'pytest']
@@ -107,6 +107,8 @@ setuptools.setup(
         'flake8.report': [
             'default = flake8.formatting.default:Default',
             'pylint = flake8.formatting.default:Pylint',
+            'quiet-filename = flake8.formatting.default:FilenameOnly',
+            'quiet-nothing = flake8.formatting.default:Nothing',
         ],
     },
     classifiers=[

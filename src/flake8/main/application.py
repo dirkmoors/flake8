@@ -181,10 +181,17 @@ class Application(object):
         # type: () -> NoneType
         """Initialize a formatter based on the parsed options."""
         if self.formatter is None:
+            format_plugin = self.options.format
+            if 1 <= self.options.quiet < 2:
+                format_plugin = 'quiet-filename'
+            elif 2 <= self.options.quiet:
+                format_plugin = 'quiet-nothing'
+
             if formatter_class is None:
                 formatter_class = self.formatting_plugins.get(
-                    self.options.format, self.formatting_plugins['default']
+                    format_plugin, self.formatting_plugins['default']
                 ).execute
+
             self.formatter = formatter_class(self.options)
 
     def make_notifier(self):
@@ -263,6 +270,13 @@ class Application(object):
         LOG.info('Found a total of %d violations and reported %d',
                  self.total_result_count, self.result_count)
 
+    def report_statistics(self):
+        """Aggregate and report statistics from this run."""
+        if not self.options.statistics:
+            return
+
+        self.formatter.show_statistics(self.guide.stats)
+
     def initialize(self, argv):
         # type: () -> NoneType
         """Initialize the application to be run.
@@ -284,8 +298,11 @@ class Application(object):
         # type: (Union[NoneType, List[str]]) -> NoneType
         self.initialize(argv)
         self.run_checks()
+        self.formatter.start()
         self.report_errors()
+        self.report_statistics()
         self.report_benchmarks()
+        self.formatter.stop()
 
     def run(self, argv=None):
         # type: (Union[NoneType, List[str]]) -> NoneType

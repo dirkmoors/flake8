@@ -85,6 +85,19 @@ class BaseFormatter(object):
         raise NotImplementedError('Subclass of BaseFormatter did not implement'
                                   ' format.')
 
+    def show_statistics(self, statistics):
+        """Format and print the statistics."""
+        for error_code in statistics.error_codes():
+            stats_for_error_code = statistics.statistics_for(error_code)
+            statistic = next(stats_for_error_code)
+            count = statistic.count
+            count += sum(stat.count for stat in stats_for_error_code)
+            self._write('{count:<5} {error_code} {message}'.format(
+                count=count,
+                error_code=error_code,
+                message=statistic.message,
+            ))
+
     def show_benchmarks(self, benchmarks):
         """Format and print the benchmarks."""
         # NOTE(sigmavirus24): The format strings are a little confusing, even
@@ -126,7 +139,9 @@ class BaseFormatter(object):
         if not self.options.show_source or error.physical_line is None:
             return ''
 
-        pointer = (' ' * error.column_number) + '^'
+        # Because column numbers are 1-indexed, we need to remove one to get
+        # the proper number of space characters.
+        pointer = (' ' * (error.column_number - 1)) + '^'
         # Physical lines have a newline at the end, no need to add an extra
         # one
         return error.physical_line + pointer
@@ -151,7 +166,8 @@ class BaseFormatter(object):
             The source code that has been formatted and associated with the
             line of output.
         """
-        self._write(line)
+        if line:
+            self._write(line)
         if source:
             self._write(source)
 

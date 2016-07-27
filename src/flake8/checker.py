@@ -38,6 +38,21 @@ SERIAL_RETRY_ERRNOS = set([
 ])
 
 
+def _run_checks_from_queue(process_queue, results_queue, statistics_queue):
+    LOG.info('Running checks in parallel')
+    try:
+        for checker in iter(process_queue.get, 'DONE'):
+            LOG.info('Checking "%s"', checker.filename)
+            checker.run_checks(results_queue, statistics_queue)
+    except exceptions.PluginRequestedUnknownParameters as exc:
+        print(str(exc))
+    except Exception as exc:
+        LOG.error('Unhandled exception occurred')
+        raise
+    finally:
+        results_queue.put('DONE')
+
+
 class Manager(object):
     """Manage the parallelism and checker instances for each plugin and file.
 
@@ -135,7 +150,7 @@ class Manager(object):
         all_statistics['files'] += len(self.checkers)
 
     def _job_count(self):
-        # type: () -> Union[int, NoneType]
+        # type: () -> int
         # First we walk through all of our error cases:
         # - multiprocessing library is not present
         # - we're running on windows in which case we know we have significant
@@ -214,13 +229,6 @@ class Manager(object):
                 physical_line=physical_line,
             )
         return reported_results_count
-
-    def _run_checks_from_queue(self):
-        LOG.info('Running checks in parallel')
-        for checker in iter(self.process_queue.get, 'DONE'):
-            LOG.info('Checking "%s"', checker.filename)
-            checker.run_checks(self.results_queue, self.statistics_queue)
-        self.results_queue.put('DONE')
 
     def is_path_excluded(self, path):
         # type: (str) -> bool
@@ -309,7 +317,9 @@ class Manager(object):
         LOG.info('Starting %d process workers', self.jobs)
         for i in range(self.jobs):
             proc = multiprocessing.Process(
-                target=self._run_checks_from_queue
+                target=_run_checks_from_queue,
+                args=(self.process_queue, self.results_queue,
+                      self.statistics_queue)
             )
             proc.daemon = True
             proc.start()
@@ -353,6 +363,8 @@ class Manager(object):
         except KeyboardInterrupt:
             LOG.warning('Flake8 was interrupted by the user')
             raise exceptions.EarlyQuit('Early quit while running checks')
+        finally:
+            self._force_cleanup()
 
     def start(self, paths=None):
         """Start checking files.
@@ -444,7 +456,14 @@ class FileChecker(object):
     def run_check(self, plugin, **arguments):
         """Run the check in a single plugin."""
         LOG.debug('Running %r with %r', plugin, arguments)
-        self.processor.keyword_arguments_for(plugin.parameters, arguments)
+        try:
+            self.processor.keyword_arguments_for(plugin.parameters, arguments)
+        except AttributeError as ae:
+            LOG.error('Plugin requested unknown parameters.')
+            raise exceptions.PluginRequestedUnknownParameters(
+                plugin=plugin,
+                exception=ae,
+            )
         return plugin.execute(**arguments)
 
     def run_ast_checks(self):
