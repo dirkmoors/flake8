@@ -19,6 +19,7 @@ from flake8 import defaults
 from flake8 import exceptions
 from flake8 import processor
 from flake8 import utils
+from flake8.plugins import junitxml
 
 LOG = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ class Manager(object):
       together and make our output deterministic.
     """
 
-    def __init__(self, style_guide, arguments, checker_plugins):
+    def __init__(self, style_guide, arguments, checker_plugins, junit_xml_report=None):
         """Initialize our Manager instance.
 
         :param style_guide:
@@ -70,11 +71,14 @@ class Manager(object):
             The plugins representing checks parsed from entry-points.
         :type checker_plugins:
             flake8.plugins.manager.Checkers
+        :param str junit_xml_report:
+            Filename to write a JUnit XML report to
         """
         self.arguments = arguments
         self.style_guide = style_guide
         self.options = style_guide.options
         self.checks = checker_plugins
+        self.junit_xml_report = junit_xml_report
         self.jobs = self._job_count()
         self.process_queue = None
         self.results_queue = None
@@ -292,11 +296,19 @@ class Manager(object):
             tuple(int, int)
         """
         results_reported = results_found = 0
+        all_results = {}
         for checker in self.checkers:
+            if checker.filename not in all_results:
+                all_results[checker.filename] = {'checker': checker}
             results = sorted(checker.results, key=lambda tup: (tup[1], tup[2]))
+            all_results[checker.filename]['errors'] = results
             results_reported += self._handle_results(checker.display_name,
                                                      results)
             results_found += len(results)
+
+        # Output JUnit XML
+        junitxml.report_junit_xml(self.junit_xml_report, all_results)
+
         return (results_found, results_reported)
 
     def run_parallel(self):
